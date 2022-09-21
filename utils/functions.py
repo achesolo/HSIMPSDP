@@ -9,7 +9,7 @@ from collections import OrderedDict
 import time
 #from models.delta_simp import DeltaSimpML
 from models.deltaSimpML import deltaML
-from models.piecewiseApproxMat import Piecewise_Approx
+
 
 def dec2bin(d, n):
     dbin = deque()
@@ -82,16 +82,6 @@ def simul_fval(my_prob,s0,Q0):
         val, subgrad = esper_q(my_prob,s0[i],[Q0[i]])
         f_simul.append(val)
     return np.min(f_simul), np.max(f_simul), np.mean(f_simul), np.std(f_simul)
-
-
-def interpo_err_mat(s_disc,v_disc,points,s_max,A,conv,cb):
-    n_points = len(points)
-    errors = []
-    for k in range(n_points):
-        interpo_val, xd= Piecewise_Approx(s_disc,v_disc,points[k],conv).lamda()
-        true_val,subgrad = eval_point(A,points[k],s_max,conv,cb)
-        errors.append(abs(true_val-interpo_val))
-    return np.min(errors), np.max(errors), np.mean(errors), np.std(errors)
 
 
 class Node(object):

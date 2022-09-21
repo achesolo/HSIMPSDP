@@ -1,13 +1,15 @@
+import concurrent.futures
 import os
 
 from models.errorMat import ErrorMat
 from models.piecewiseApproxMat import Piecewise_Approx
 from models.dp_mat import DP
-from utils.functions import Node, dec2bin, eval_point, f_val, cobb, simul_fval, interpo_err_mat, gridGen
+from utils.functions import Node, dec2bin, eval_point, f_val, cobb, simul_fval, gridGen
 from scipy.linalg import qr
 import numpy as np
 import time
 import pandas as pd
+from collections import OrderedDict
 
 
 def ortho(n):
@@ -53,7 +55,7 @@ def statSimul(B, n_grid_points, n_states, T=10, nsimul=5):
 
         for j in range(len(mets)):
             my_probs, time, error = DP().dp_mat(T, B, C, s_min, s_max, u_max, f_va,
-                                                 v_val, s_points, u_disc, Q, mets[j])
+                                                v_val, s_points, u_disc, Q, mets[j])
             stat = simul_fval(my_probs[0], s0, Q0)
 
             results[j].append((time, stat))
@@ -82,66 +84,70 @@ def reshapeRes(results):
     return reshape_res
 
 
+# testing Parallel processing
 def interErrSim(n, nr, cb, n_grid_points, n_states, m_batch=3, r_simp=5, conv=0):
+    d = OrderedDict()
+    s_min, s_max, A = randData(n)
+    s0 = np.random.uniform(low=s_min, high=s_max, size=[n_states, n])
 
-    tm1 = []
-    tm2 = []
-    tm3 = []
-    tm4 = []
-    tsimp = []
-
-    err_m1 = []
-    err_m2 = []
-    err_m3 = []
-    err_m4 = []
-    err_simp = []
-
-    for k in range(nr):
-        s_min, s_max, A = randData(n)
-        s0 = np.random.uniform(low=s_min, high=s_max, size=[n_states, n])
-
+    def doMet1():
         s_disc, v_disc, s_grad, t = met1_mat(s_min, s_max, n_grid_points, A, conv)
-        tm1.append(t)
-        E = interpo_err_mat(s_disc, v_disc, s0, s_max, A, conv, cb)
-        err_m1.append(E)
+        min, max, mean, std = interpo_err_mat(s_disc, v_disc, s0, s_max, A, conv, cb)
+        d["met1"] = ['met1', t, min, max, mean, std]
 
+    def doMet2():
         s_disc, v_disc, s_grad, l, t = met2_mat(s_min, s_max, n_grid_points, A, conv)
-        tm2.append(t)
-        E = interpo_err_mat(s_disc, v_disc, s0, s_max, A, conv, cb)
-        err_m2.append(E)
+        min, max, mean, std = interpo_err_mat(s_disc, v_disc, s0, s_max, A, conv, cb)
+        # print(f'met2: {[t, min, max, mean, std]}')
+        d["met2"] = ['met2', t, min, max, mean, std]
 
+    def doMet3():
         s_disc, v_disc, s_grad, l, t = met3_mat(s_min, s_max, n_grid_points, m_batch, A, 0)
-        tm3.append(t)
-        E = interpo_err_mat(s_disc, v_disc, s0, s_max, A, conv, cb)
-        err_m3.append(E)
+        min, max, mean, std = interpo_err_mat(s_disc, v_disc, s0, s_max, A, conv, cb)
+        # print(f'met3: {[t, min, max, mean, std]}')
+        d["met3"] = ['met3', t, min, max, mean, std]
 
+    def doMet4():
         s_disc, v_disc, s_grad, l, t = met4_mat(s_min, s_max, n_grid_points, r_simp, m_batch, A, 0)
-        tm4.append(t)
-        E = interpo_err_mat(s_disc, v_disc, s0, s_max, A, conv, cb)
-        err_m4.append(E)
+        min, max, mean, std = interpo_err_mat(s_disc, v_disc, s0, s_max, A, conv, cb)
+        # print(f'met4: {[t, min, max, mean, std]}')
+        d["met4"] = ["met4", t, min, max, mean, std]
 
-        s_disc,v_disc, deltaList, t = gridGen(s_min,s_max,A,n_grid_points,conv,2)
-        tsimp.append(t)
-        E = interpo_err_mat(np.array(s_disc),v_disc,s0,s_max,A,conv,cb)
-        err_simp.append(E)
+    def doSimp():
+        s_disc, v_disc, deltaList, t = gridGen(s_min, s_max, A, n_grid_points, conv, 2)
+        min, max, mean, std = interpo_err_mat(np.array(s_disc), v_disc, s0, s_max, A, conv, cb)
+        # print(f'simp: {[t, min, max, mean, std]}')
+        d["simp"] = ["simp", t, min, max, mean, std]
 
-    d = {"Mean Time": [np.mean(tm1), np.mean(tm2), np.mean(tm3), np.mean(tm4), np.mean(tsimp)],
-         "Error M1": np.mean(err_m1, axis=0),
-         "Error M2": np.mean(err_m2, axis=0),
-         "Error M3": np.mean(err_m3, axis=0),
-         "Error M4": np.mean(err_m4, axis=0),
-         "Error M5": np.mean(err_simp, axis=0)
-         }
-    data = pd.DataFrame.from_dict(d, orient='index', columns=None)
-    data = data.T
-    data.to_excel("simulate_interpo_error_mat.xlsx", sheet_name="error", index=False)
-    return f'data written to simulate_interpo_error_mat.xlsx'
-    # results = [np.concatenate(([np.mean(tm1)], np.mean(err_m1, axis=0))).tolist(),
-    #            np.concatenate(([np.mean(tm2)], np.mean(err_m2, axis=0))).tolist(),
-    #            np.concatenate(([np.mean(tm3)], np.mean(err_m3, axis=0))).tolist(),
-    #            np.concatenate(([np.mean(tm4)], np.mean(err_m4, axis=0))).tolist(),
-    #            np.concatenate(([np.mean(tsimp)],np.mean(err_simp, axis=0))).tolist()]
-    # return results
+    funcs = [[doMet1(), doMet2(), doMet3(), doMet4(), doSimp()] for i in range(nr)]
+
+    def run_interErr_sim():
+        with concurrent.futures.ThreadPoolExecutor() as ex:
+            rd = ex.map(interErrSim, funcs)
+            data = {
+                "Method": [d["met1"][0], d["met2"][0], d["met3"][0], d["met4"][0], d["simp"][0]],
+                "Time": [d["met1"][1], d["met2"][1], d["met3"][1], d["met4"][1], d["simp"][1]],
+                "Min": [d["met1"][2], d["met2"][2], d["met3"][2], d["met4"][2], d["simp"][2]],
+                "Max": [d["met1"][3], d["met2"][3], d["met3"][3], d["met4"][3], d["simp"][3]],
+                "Std": [d["met1"][4], d["met2"][4], d["met3"][4], d["met4"][4], d["simp"][4]]
+            }
+            data = pd.DataFrame.from_dict(data, orient='index', columns=None)
+            data = data.T
+            data.to_excel("simulate_interpo_error_mat.xlsx", sheet_name="error", index=False)
+            return f'data written to simulate_interpo_error_mat.xlsx'
+
+    return run_interErr_sim()
+
+
+def interpo_err_mat(s_disc, v_disc, points, s_max, A, conv, cb):
+    n_points = len(points)
+    errors = []
+    for k in range(n_points):
+        interpo_val, xd = Piecewise_Approx(s_disc, v_disc, points[k], conv).lamda()
+        true_val, subgrad = eval_point(A, points[k], s_max, conv, cb)
+        errors.append(abs(true_val - interpo_val))
+    return np.min(errors), np.max(errors), np.mean(errors), np.std(errors)
+
 
 def met1(s_min, s_max, n_max, A=[], conv=0):
     time_1 = time.time()
@@ -276,14 +282,15 @@ def met4_mat(s_min, s_max, n_max, r_simp=5, m_batch=3, A=[], conv=0):
         time_2 = time.time()
     return s_disc, v_disc, s_grad, list_delta, time_2 - time_1
 
+
 def randData(n):
-    s_min = np.random.uniform(low=150., high=600., size=[1,n])
-    s_max = np.random.uniform(low=800., high=7000., size=[1,n])
-    A = np.random.rand(n,n)
+    s_min = np.random.uniform(low=150., high=600., size=[1, n])
+    s_max = np.random.uniform(low=800., high=7000., size=[1, n])
+    A = np.random.rand(n, n)
     H = ortho(n)
-    D = np.diag(np.diag(np.random.rand(n,n)))
-    A = np.matmul(H, np.matmul(D,H.transpose()))
-    return s_min[0],s_max[0],A
+    D = np.diag(np.diag(np.random.rand(n, n)))
+    A = np.matmul(H, np.matmul(D, H.transpose()))
+    return s_min[0], s_max[0], A
 
 
 def init_nodes(s_min, s_max, n_max, A=[], conv=0):
@@ -291,9 +298,12 @@ def init_nodes(s_min, s_max, n_max, A=[], conv=0):
     if n_max < nsom:
         raise Exception('# of grids points should be>={}'.format(nsom))
     n = len(s_max)
-    s_disc = [(np.array(s_min) + np.multiply((np.array(s_max) - np.array(s_min)), np.array(np.array(dec2bin(j, n)))))for j in range(nsom)]
+    s_disc = [(np.array(s_min) + np.multiply((np.array(s_max) - np.array(s_min)), np.array(np.array(dec2bin(j, n)))))
+              for j in range(nsom)]
     v_disc = [eval_point(A, (np.array(s_min) + np.multiply((np.array(s_max) - np.array(s_min)),
-                                                           np.array(np.array(dec2bin(j, n))))), s_max, conv)[0] for j in range(nsom)]
+                                                           np.array(np.array(dec2bin(j, n))))), s_max, conv)[0] for j in
+              range(nsom)]
     s_grad = [eval_point(A, (np.array(s_min) + np.multiply((np.array(s_max) - np.array(s_min)),
-                                                           np.array(np.array(dec2bin(j, n))))), s_max, conv)[1] for j in range(nsom)]
+                                                           np.array(np.array(dec2bin(j, n))))), s_max, conv)[1] for j in
+              range(nsom)]
     return s_disc, v_disc, s_grad

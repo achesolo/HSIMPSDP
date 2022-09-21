@@ -23,7 +23,7 @@ class Window(QMainWindow, Ui_MainWindow):
         self.timer = QTimer(self)
         self.dp_combo_met.addItems(['simp2'])
         # self.timer.timeout.connect(lambda: self.progressBar.setValue(self.progressBar.value() + 1))
-        self.btn_simulate.clicked.connect(self.run_simulate_interpo_error_mat)
+        self.btn_simulate.clicked.connect(self.simulate_interpo_error_mat)
 
         self.btn_B.clicked.connect(self.read_B_Data)
         self.btn_run_dp.clicked.connect(self.simulate_dp)
